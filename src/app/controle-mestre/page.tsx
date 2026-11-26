@@ -334,40 +334,53 @@ export default function SuperAdminPage() {
 
         {aba === 'senhas' && (
           <div className="space-y-3">
-            <h2 className="font-bold flex items-center gap-2 text-amber-400"><KeyRound className="w-5 h-5" /> Pedidos de Redefinição de Senha</h2>
+            <h2 className="font-bold flex items-center gap-2 text-amber-400">
+              <KeyRound className="w-5 h-5" /> Pedidos de Recuperação de Senha
+            </h2>
             {dados?.recuperacoes?.map((r: any) => (
-              <div key={r.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-wrap justify-between items-center gap-4">
+              <div
+                key={r.id}
+                className="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-wrap justify-between items-center gap-4"
+              >
                 <div>
                   <p className="font-bold text-sm">{r.email_cliente}</p>
-                  <p className="text-xs text-slate-400">WhatsApp do Cliente: {r.telefone_cliente}</p>
+                  <p className="text-xs text-slate-400">WhatsApp: {r.telefone_cliente || 'Não informado'}</p>
+                  <p className="text-xs text-emerald-400 mt-1 font-mono">
+                    Senha cadastrada: <strong>{r.senha_atual}</strong>
+                  </p>
                 </div>
 
-                {r.status === 'pendente' ? (
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      placeholder="Nova senha para o cliente"
-                      value={novasSenhas[r.id] || ''}
-                      onChange={(e) => setNovasSenhas({ ...novasSenhas, [r.id]: e.target.value })}
-                      className="bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs"
-                    />
+                <div className="flex flex-wrap gap-2 items-center">
+                  <a
+                    href={`mailto:${r.email_cliente}?subject=${encodeURIComponent(
+                      'Recuperação de Palavra-Passe - KwanzaUSDT'
+                    )}&body=${encodeURIComponent(
+                      `Olá,\n\nA sua palavra-passe cadastrada na plataforma KwanzaUSDT é: ${r.senha_atual}\n\nAtenciosamente,\nEquipa KwanzaUSDT`
+                    )}`}
+                    className="bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs px-4 py-2 rounded-xl"
+                  >
+                    Enviar por E-mail
+                  </a>
+
+                  {r.status === 'pendente' ? (
                     <button
-                      onClick={() => redefinirSenhaCliente(r)}
+                      onClick={async () => {
+                        await fetch('/api/dados', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ acao: 'marcar_senha_enviada', pedido_id: r.id }),
+                        });
+                        carregarTudo();
+                      }}
                       className="bg-emerald-500 text-slate-950 font-bold text-xs px-4 py-2 rounded-xl"
                     >
-                      Definir & Devolver
+                      Marcar como Enviado
                     </button>
-                  </div>
-                ) : (
-                  <span className="text-xs text-emerald-400">
-                    Resolvido • Nova senha definida: <strong>{r.nova_senha_definida}</strong>
-                  </span>
-                )}
+                  ) : (
+                    <span className="text-xs text-emerald-400 font-semibold">Enviado manualmente</span>
+                  )}
+                </div>
               </div>
             ))}
           </div>
         )}
-      </div>
-    </div>
-  );
-}
