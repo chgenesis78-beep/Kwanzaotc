@@ -1,47 +1,32 @@
 import { NextResponse } from 'next/server';
-import { supabase } from '@/lib/db';
+import crypto from 'crypto';
+import { readStore, writeStore } from '@/lib/db';
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const tipo = searchParams.get('tipo');
+  const store = readStore();
 
   if (tipo === 'config') {
-    const { data } = await supabase.from('configuracoes').select('*').eq('id', 1).single();
-    return NextResponse.json(data || { preco_usdt_kz: 1150 });
+    return NextResponse.json(store.config);
   }
 
   if (tipo === 'ordens_cliente') {
     const clienteId = searchParams.get('clienteId');
-    const { data } = await supabase
-      .from('ordens')
-      .select('*')
-      .eq('cliente_id', clienteId)
-      .order('criado_em', { ascending: false });
-    return NextResponse.json(data || []);
+    return NextResponse.json(store.ordens.filter((o) => o.cliente_id === clienteId));
   }
 
   if (tipo === 'painel_equipa') {
-    const { data: ordens } = await supabase.from('ordens').select('*').order('criado_em', { ascending: false });
-    const { data: config } = await supabase.from('configuracoes').select('*').eq('id', 1).single();
-    return NextResponse.json({ ordens: ordens || [], config });
+    return NextResponse.json({ ordens: store.ordens, config: store.config });
   }
 
   if (tipo === 'painel_admin') {
-    const { data: ordens } = await supabase.from('ordens').select('*').order('criado_em', { ascending: false });
-    const { data: config } = await supabase.from('configuracoes').select('*').eq('id', 1).single();
-    const { data: assistentes } = await supabase.from('utilizadores').select('*').eq('role', 'assistente');
-    const { data: clientes } = await supabase.from('utilizadores').select('*').eq('role', 'cliente');
-    const { data: recuperacoes } = await supabase
-      .from('recuperacao_senhas')
-      .select('*')
-      .order('criado_em', { ascending: false });
-
     return NextResponse.json({
-      ordens: ordens || [],
-      config,
-      assistentes: assistentes || [],
-      clientes: clientes || [],
-      recuperacoes: recuperacoes || [],
+      ordens: store.ordens,
+      config: store.config,
+      assistentes: store.utilizadores.filter((u) => u.role === 'assistente'),
+      clientes: store.utilizadores.filter((u) => u.role === 'cliente'),
+      recuperacoes: store.recuperacoes,
     });
   }
 
@@ -51,98 +36,87 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const body = await req.json();
   const { acao } = body;
+  const store = readStore();
 
   if (acao === 'criar_ordem') {
-    const {
-      cliente_id,
-      cliente_nome,
-      cliente_email,
-      quantidade_usdt,
-      valor_kz,
-      cotacao_aplicada,
-      metodo_pagamento,
-      referencia_comprovativo,
-      wallet_destino,
-      rede_blockchain,
-    } = body;
-
-    const { error } = await supabase.from('ordens').insert({
-      cliente_id,
-      cliente_nome,
-      cliente_email,
-      quantidade_usdt,
-      valor_kz,
-      cotacao_aplicada,
-      metodo_pagamento,
-      referencia_comprovativo,
-      wallet_destino,
-      rede_blockchain,
+    store.ordens.unshift({
+      id: crypto.randomUUID(),
+      cliente_id: body.cliente_id,
+      cliente_nome: body.cliente_nome,
+      cliente_email: body.cliente_email,
+      quantidade_usdt: body.quantidade_usdt,
+      valor_kz: body.valor_kz,
+      cotacao_aplicada: body.cotacao_aplicada,
+      metodo_pagamento: body.metodo_pagamento,
+      referencia_comprovativo: body.referencia_comprovativo,
+      wallet_destino: body.wallet_destino,
+      rede_blockchain: body.rede_blockchain,
       status: 'pendente',
+      atendido_por: null,
+      criado_em: new Date().toISOString(),
     });
-
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    writeStore(store);
     return NextResponse.json({ success: true });
   }
 
   if (acao === 'atualizar_ordem') {
-    const { ordem_id, status, atendido_por } = body;
-    await supabase.from('ordens').update({ status, atendido_por }).eq('id', ordem_id);
+    const idx = store.ordens.findIndex((o) => o.id === body.ordem_id);
+    if (idx >= 0) {
+      store.ordens[idx].status = body.status;
+      store.ordens[idx].atendido_por = body.atendido_por;
+      writeStore(store);
+    }
     return NextResponse.json({ success: true });
   }
 
   if (acao === 'atualizar_config') {
-    const {
-      preco_usdt_kz,
-      iban_empresa,
-      express_numero,
-      referencia_entidade,
-      paypay_conta,
-      ekwanza_conta,
-      unitel_money_conta,
-    } = body;
-
-    await supabase
-      .from('configuracoes')
-      .update({
-        preco_usdt_kz,
-        iban_empresa,
-        express_numero,
-        referencia_entidade,
-        paypay_conta,
-        ekwanza_conta,
-        unitel_money_conta,
-      })
-      .eq('id', 1);
-
+    store.config = {
+      ...store.config,
+      preco_usdt_kz: Number(body.preco_usdt_kz) || store.config.preco_usdt_kz,
+      iban_empresa: body.iban_empresa ?? store.config.iban_empresa,
+      express_numero: body.express_numero ?? store.config.express_numero,
+      referencia_entidade: body.referencia_entidade ?? store.config.referencia_entidade,
+      paypay_conta: body.paypay_conta ?? store.config.paypay_conta,
+      ekwanza_conta: body.ekwanza_conta ?? store.config.ekwanza_conta,
+      unitel_money_conta: body.unitel_money_conta ?? store.config.unitel_money_conta,
+    };
+    writeStore(store);
     return NextResponse.json({ success: true });
   }
 
   if (acao === 'registar_assistente') {
     const { nome, email, telefone, senha } = body;
-    const { error } = await supabase.from('utilizadores').insert({
+    const jaExiste = store.utilizadores.some((u) => u.email.toLowerCase() === email.toLowerCase());
+    if (jaExiste) {
+      return NextResponse.json({ error: 'Este e-mail já está em uso.' }, { status: 400 });
+    }
+    store.utilizadores.push({
+      id: crypto.randomUUID(),
       nome,
       email,
       telefone,
       senha,
       role: 'assistente',
       email_verificado: true,
+      codigo_verificacao: null,
+      criado_em: new Date().toISOString(),
     });
-    if (error) return NextResponse.json({ error: 'E-mail já está em uso.' }, { status: 400 });
+    writeStore(store);
     return NextResponse.json({ success: true });
   }
 
   if (acao === 'remover_assistente') {
-    await supabase.from('utilizadores').delete().eq('id', body.id);
+    store.utilizadores = store.utilizadores.filter((u) => u.id !== body.id);
+    writeStore(store);
     return NextResponse.json({ success: true });
   }
 
-  if (acao === 'redefinir_senha_cliente') {
-    const { pedido_id, email_cliente, nova_senha } = body;
-    await supabase.from('utilizadores').update({ senha: nova_senha }).eq('email', email_cliente);
-    await supabase
-      .from('recuperacao_senhas')
-      .update({ status: 'resolvido', nova_senha_definida: nova_senha })
-      .eq('id', pedido_id);
+  if (acao === 'marcar_senha_enviada') {
+    const idx = store.recuperacoes.findIndex((r) => r.id === body.pedido_id);
+    if (idx >= 0) {
+      store.recuperacoes[idx].status = 'enviado_manualmente';
+      writeStore(store);
+    }
     return NextResponse.json({ success: true });
   }
 
