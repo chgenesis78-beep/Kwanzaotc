@@ -89,12 +89,12 @@ export async function POST(req: Request) {
 
     if (acao === 'login_super_admin') {
       const { email, senha, pin } = body;
-      if (
-        process.env.SUPER_ADMIN_EMAIL &&
-        email === process.env.SUPER_ADMIN_EMAIL &&
-        senha === process.env.SUPER_ADMIN_PASSWORD &&
-        pin === process.env.SUPER_ADMIN_PIN
-      ) {
+
+      const adminEmail = process.env.SUPER_ADMIN_EMAIL || 'chgenesis78@gmail.com';
+      const adminSenha = process.env.SUPER_ADMIN_PASSWORD || '@AlissandraSilva2007@';
+      const adminPin = process.env.SUPER_ADMIN_PIN || '00877800';
+
+      if (email === adminEmail && senha === adminSenha && pin === adminPin) {
         return NextResponse.json({
           success: true,
           admin: { nome: 'Super Admin', email, role: 'super_admin' },
