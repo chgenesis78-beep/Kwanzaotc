@@ -11,13 +11,14 @@ export async function POST(req: Request) {
     }
 
     const store = readStore();
-    const codigo = Math.floor(100000 + Math.random() * 900000).toString();
     const existenteIndex = store.utilizadores.findIndex(
       (u) => u.email.toLowerCase() === email.toLowerCase()
     );
 
+    let cliente;
+
     if (existenteIndex >= 0) {
-      if (store.utilizadores[existenteIndex].email_verificado) {
+      if (store.utilizadores[existenteIndex].role === 'cliente') {
         return NextResponse.json({ error: 'Este e-mail já está registado.' }, { status: 400 });
       }
       store.utilizadores[existenteIndex] = {
@@ -25,27 +26,30 @@ export async function POST(req: Request) {
         nome,
         telefone,
         senha,
-        codigo_verificacao: codigo,
+        email_verificado: true,
+        codigo_verificacao: null,
       };
+      cliente = store.utilizadores[existenteIndex];
     } else {
-      store.utilizadores.push({
+      cliente = {
         id: crypto.randomUUID(),
         nome,
         email,
         telefone,
         senha,
-        role: 'cliente',
-        email_verificado: false,
-        codigo_verificacao: codigo,
+        role: 'cliente' as const,
+        email_verificado: true,
+        codigo_verificacao: null,
         criado_em: new Date().toISOString(),
-      });
+      };
+      store.utilizadores.push(cliente);
     }
 
     writeStore(store);
 
     return NextResponse.json({
       success: true,
-      codigo_demo: codigo,
+      user: cliente,
     });
   } catch {
     return NextResponse.json({ error: 'Erro ao processar registo.' }, { status: 500 });
