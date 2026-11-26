@@ -8,49 +8,46 @@ export async function POST(req: Request) {
     const { acao } = body;
     const store = readStore();
 
-    if (acao === 'verificar_otp') {
-      const { email, codigo } = body;
-      const idx = store.utilizadores.findIndex(
-        (u) => u.email.toLowerCase() === email.toLowerCase() && u.codigo_verificacao === codigo
-      );
-
-      if (idx === -1) {
-        return NextResponse.json({ error: 'Código inválido ou expirado.' }, { status: 400 });
-      }
-
-      store.utilizadores[idx].email_verificado = true;
-      store.utilizadores[idx].codigo_verificacao = null;
-      writeStore(store);
-
-      return NextResponse.json({ success: true, user: store.utilizadores[idx] });
-    }
-
     if (acao === 'login_cliente') {
       const { email, senha } = body;
+
+      if (!email || !senha) {
+        return NextResponse.json(
+          { error: 'Preencha o e-mail e a palavra-passe.' },
+          { status: 400 }
+        );
+      }
+
       const user = store.utilizadores.find(
         (u) =>
-          u.email.toLowerCase() === email.toLowerCase() &&
+          u.email.toLowerCase() === String(email).toLowerCase() &&
           u.senha === senha &&
           u.role === 'cliente'
       );
 
       if (!user) {
-        return NextResponse.json({ error: 'E-mail ou palavra-passe incorretos.' }, { status: 401 });
+        return NextResponse.json(
+          { error: 'E-mail ou palavra-passe incorretos.' },
+          { status: 401 }
+        );
       }
-      if (!user.email_verificado) {
-        return NextResponse.json({ error: 'Por favor, verifique o seu e-mail antes de entrar.' }, { status: 403 });
-      }
+
       return NextResponse.json({ success: true, user });
     }
 
     if (acao === 'esqueci_senha') {
       const { email, telefone } = body;
       const user = store.utilizadores.find(
-        (u) => u.email.toLowerCase() === email.toLowerCase() && u.role === 'cliente'
+        (u) =>
+          u.email.toLowerCase() === String(email).toLowerCase() &&
+          u.role === 'cliente'
       );
 
       if (!user) {
-        return NextResponse.json({ error: 'Nenhuma conta de cliente encontrada com este e-mail.' }, { status: 404 });
+        return NextResponse.json(
+          { error: 'Nenhuma conta de cliente encontrada com este e-mail.' },
+          { status: 404 }
+        );
       }
 
       store.recuperacoes.unshift({
@@ -65,7 +62,8 @@ export async function POST(req: Request) {
 
       return NextResponse.json({
         success: true,
-        message: 'Pedido enviado! O Super Administrador irá consultar a sua senha e enviar para o seu e-mail.',
+        message:
+          'Pedido enviado! O Super Administrador irá consultar a sua senha e enviar para o seu e-mail.',
       });
     }
 
@@ -73,31 +71,44 @@ export async function POST(req: Request) {
       const { email, senha } = body;
       const assistente = store.utilizadores.find(
         (u) =>
-          u.email.toLowerCase() === email.toLowerCase() &&
+          u.email.toLowerCase() === String(email).toLowerCase() &&
           u.senha === senha &&
           u.role === 'assistente'
       );
 
       if (!assistente) {
-        return NextResponse.json({ error: 'Credenciais de assistente inválidas.' }, { status: 401 });
+        return NextResponse.json(
+          { error: 'Credenciais de assistente inválidas.' },
+          { status: 401 }
+        );
       }
+
       return NextResponse.json({ success: true, user: assistente });
     }
 
     if (acao === 'login_super_admin') {
       const { email, senha, pin } = body;
+
+      const adminEmail = process.env.SUPER_ADMIN_EMAIL || '';
+      const adminSenha = process.env.SUPER_ADMIN_PASSWORD || '';
+      const adminPin = process.env.SUPER_ADMIN_PIN || '';
+
       if (
-        process.env.SUPER_ADMIN_EMAIL &&
-        email === process.env.SUPER_ADMIN_EMAIL &&
-        senha === process.env.SUPER_ADMIN_PASSWORD &&
-        pin === process.env.SUPER_ADMIN_PIN
+        adminEmail &&
+        email === adminEmail &&
+        senha === adminSenha &&
+        pin === adminPin
       ) {
         return NextResponse.json({
           success: true,
           admin: { nome: 'Super Admin', email, role: 'super_admin' },
         });
       }
-      return NextResponse.json({ error: 'Acesso negado. Credenciais mestras inválidas.' }, { status: 401 });
+
+      return NextResponse.json(
+        { error: 'Acesso negado. Credenciais mestras inválidas.' },
+        { status: 401 }
+      );
     }
 
     return NextResponse.json({ error: 'Ação inválida' }, { status: 400 });
